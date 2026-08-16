@@ -15,11 +15,11 @@ df = pd.read_excel(FILE_ADI)
 x = df[['Ayliq gelir (AZN)', 'Kredit bali', 'Borc (AZN)']].values
 y = df['Netice'].values
 
-# torch tensorlara ceviririk
+
 x_t = torch.tensor(x, dtype=torch.float32)
 y_t = torch.tensor(y, dtype=torch.float32).view(-1, 1)
 
-# normalize etmek ucun max deyerler
+
 max_gelir = 10000.0
 max_bal = 850.0
 max_borc = 10000.0
