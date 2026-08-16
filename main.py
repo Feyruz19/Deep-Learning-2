@@ -1,88 +1,90 @@
 import os
+
 import pandas as pd
 import torch
 import torch.nn as nn
-import torch.optim as optim
-DATA_FILE = 'kredit_data.xlsx'
+from torch import optim
+
+FILE_ADI = 'kredit_data.xlsx'
+
+if not os.path.exists(FILE_ADI):
+    FILE_ADI = os.path.join(os.path.dirname(__file__), 'kredit_data.xlsx')
+
+df = pd.read_excel(FILE_ADI)
+
+x = df[['Ayliq gelir (AZN)', 'Kredit bali', 'Borc (AZN)']].values
+y = df['Netice'].values
+
+# torch tensorlara ceviririk
+x_t = torch.tensor(x, dtype=torch.float32)
+y_t = torch.tensor(y, dtype=torch.float32).view(-1, 1)
+
+# normalize etmek ucun max deyerler
+max_gelir = 10000.0
+max_bal = 850.0
+max_borc = 10000.0
+
+x_norm = x_t.clone()
+x_norm[:, 0] /= max_gelir
+x_norm[:, 1] /= max_bal
+x_norm[:, 2] /= max_borc
 
 
-
-if not os.path.exists(DATA_FILE):
-    DATA_FILE = os.path.join(os.path.dirname(__file__), 'kredit_data.xlsx')
-
-data = pd.read_excel(DATA_FILE)
-
-features = data[['Ayliq gelir (AZN)', 'Kredit bali', 'Borc (AZN)']].values
-labels = data['Netice'].values
-
-inputs = torch.tensor(features, dtype=torch.float32)
-targets = torch.tensor(labels, dtype=torch.float32).view(-1, 1)
-
-INCOME_SCALE = 10000.0
-SCORE_SCALE = 850.0
-DEBT_SCALE = 10000.0
-
-inputs_scaled = inputs.clone()
-inputs_scaled[:, 0] /= INCOME_SCALE
-inputs_scaled[:, 1] /= SCORE_SCALE
-inputs_scaled[:, 2] /= DEBT_SCALE
-
-
-class LoanApprovalModel(nn.Module):
+class KreditModeli(nn.Module):
     def __init__(self):
-        super().__init__()
-        self.hidden = nn.Linear(3, 8)
-        self.output = nn.Linear(8, 1)
+        super(KreditModeli, self).__init__()
+        self.layer1 = nn.Linear(3, 8)
+        self.layer2 = nn.Linear(8, 1)
 
-    def forward(self, x):
-        x = torch.relu(self.hidden(x))
-        x = torch.sigmoid(self.output(x))
-        return x
+    def forward(self, giris):
+        ara = torch.relu(self.layer1(giris))
+        cixis = torch.sigmoid(self.layer2(ara))
+        return cixis
 
 
-net = LoanApprovalModel()
-loss_fn = nn.BCELoss()
-opt = optim.Adam(net.parameters(), lr=0.01)
+model = KreditModeli()
+itki_fn = nn.BCELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.01)
 
-TOTAL_EPOCHS = 2000
+EPOX = 2000
 
-for epoch in range(TOTAL_EPOCHS):
-    prediction = net(inputs_scaled)
-    loss_value = loss_fn(prediction, targets)
+for ep in range(EPOX):
+    tahmin = model(x_norm)
+    itki = itki_fn(tahmin, y_t)
 
-    opt.zero_grad()
-    loss_value.backward()
-    opt.step()
+    optimizer.zero_grad()
+    itki.backward()
+    optimizer.step()
 
-    if (epoch + 1) % 400 == 0:
-        print(f"Epoch {epoch + 1}/{TOTAL_EPOCHS}, Loss = {loss_value.item():.4f}")
+    if (ep + 1) % 400 == 0:
+        print(f"Epoch {ep + 1}/{EPOX}, Loss = {itki.item():.4f}")
 
 with torch.no_grad():
-    train_probs = net(inputs_scaled)
-    train_preds = (train_probs >= 0.5).float()
-    correct_count = (train_preds == targets).float().sum()
-    acc = (correct_count / len(targets)) * 100
-    print(f"Train Accuracy = {acc:.2f}%")
+    problar = model(x_norm)
+    proqnoz = (problar >= 0.5).float()
+    dogru = (proqnoz == y_t).float().sum()
+    deqiqlik = (dogru / len(y_t)) * 100
+    print(f"Train Accuracy = {deqiqlik:.2f}%")
 
-print("\nYeni musteriler ucun proqnozlar:")
+print("\nYeni musteri proqnozlari:")
 
-applicants = torch.tensor([
+yeni = torch.tensor([
     [2800.0, 540.0, 5500.0],
     [4000.0, 640.0, 3000.0],
     [7000.0, 790.0, 1000.0]
 ], dtype=torch.float32)
 
-applicants_scaled = applicants.clone()
-applicants_scaled[:, 0] /= INCOME_SCALE
-applicants_scaled[:, 1] /= SCORE_SCALE
-applicants_scaled[:, 2] /= DEBT_SCALE
+yeni_norm = yeni.clone()
+yeni_norm[:, 0] /= max_gelir
+yeni_norm[:, 1] /= max_bal
+yeni_norm[:, 2] /= max_borc
 
-names = ["A", "B", "C"]
+musteriler = ["A", "B", "C"]
 
 with torch.no_grad():
-    final_probs = net(applicants_scaled)
-    final_preds = (final_probs >= 0.5).float()
+    n_problar = model(yeni_norm)
+    n_proqnoz = (n_problar >= 0.5).float()
 
-    for idx in range(len(applicants)):
-        verdict = "TESDIQLENDI" if final_preds[idx].item() == 1 else "TESDIQLENMEDI"
-        print(f"Customer={names[idx]} | Approval_Prob={final_probs[idx].item():.4f} | Result={verdict}")
+    for i in range(len(yeni)):
+        netice = "TESDIQLENDI" if n_proqnoz[i].item() == 1 else "TESDIQLENMEDI"
+        print(f"Customer={musteriler[i]} | Approval_Prob={n_problar[i].item():.4f} | Result={netice}")
